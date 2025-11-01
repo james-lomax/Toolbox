@@ -22,7 +22,7 @@ def camel_to_snake(name: str) -> str:
     return s2.lower()
 
 
-def _process_lines(lines: List[str]) -> Tuple[List[str], dict]:
+def _process_lines(lines: List[str]) -> Tuple[List[str], dict, List[str]]:
     changed = False
     stats = {
         "annotations_json_removed": 0,
@@ -30,6 +30,7 @@ def _process_lines(lines: List[str]) -> Tuple[List[str], dict]:
         "imports_moshi_removed": 0,
         "import_serializable_added": False,
     }
+    errors: List[str] = []
 
     # First pass: transform annotations with validation for @Json(name = ...)
     transformed: List[str] = []
@@ -54,20 +55,25 @@ def _process_lines(lines: List[str]) -> Tuple[List[str], dict]:
             json_name = m_json_with_name.group(1)
             # Validate against the next line (expected: val fieldName: ...)
             if i + 1 >= n:
-                raise SystemExit(
+                errors.append(
                     "Encountered @Json(name=...) without following field declaration"
                 )
+                # Keep processing remaining lines
+                i += 1
+                continue
             next_line = lines[i + 1]
             m_val = RE_VAL_DECL.match(next_line)
             if not m_val:
-                raise SystemExit(
+                errors.append(
                     "Expected a Kotlin 'val' declaration after @Json(name=...), got: "
                     + next_line.strip()
                 )
+                i += 1
+                continue
             field_name = m_val.group(2)
             expected_snake = camel_to_snake(field_name)
             if expected_snake != json_name:
-                raise SystemExit(
+                errors.append(
                     f"Field '{field_name}' serializes to '{expected_snake}', but @Json name is '{json_name}'"
                 )
             # Drop the @Json line
@@ -139,21 +145,24 @@ def _process_lines(lines: List[str]) -> Tuple[List[str], dict]:
         stats["import_serializable_added"] = True
         changed = True
 
-    return (result_lines, {"changed": changed, **stats})
+    return (result_lines, {"changed": changed, **stats}, errors)
 
 
-def process_file(path: Path, write: bool) -> dict:
+def process_file(path: Path, write: bool) -> Tuple[dict, List[str]]:
     text = path.read_text(encoding="utf-8")
     orig_lines = text.splitlines(keepends=True)
-    new_lines, meta = _process_lines(orig_lines)
+    new_lines, meta, errors = _process_lines(orig_lines)
 
-    if meta["changed"] and write:
+    if (not errors) and meta["changed"] and write:
         path.write_text("".join(new_lines), encoding="utf-8")
 
-    return {
-        "path": str(path),
-        **meta,
-    }
+    return (
+        {
+            "path": str(path),
+            **meta,
+        },
+        errors,
+    )
 
 
 def main():
@@ -190,8 +199,16 @@ def main():
 
     files: List[Path] = [p for p in root.rglob(f"*{args.ext}") if p.is_file()]
 
+    any_errors = False
     for f in files:
-        process_file(f, write=not args.dry_run)
+        meta, errors = process_file(f, write=not args.dry_run)
+        if errors:
+            any_errors = True
+            print(str(f))
+            for e in errors:
+                print(f"- {e}")
+    if any_errors:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
