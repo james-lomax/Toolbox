@@ -9,7 +9,7 @@ RE_IMPORT_JSONCLASS = re.compile(r"^\s*import\s+com\.squareup\.moshi\.JsonClass\
 RE_ANNOTATION_JSONCLASS = re.compile(r"^(\s*)@JsonClass\([^)]*\)\s*$")
 RE_ANNOTATION_JSON = re.compile(r"^\s*@Json(?:\([^)]*\))?\s*$")
 RE_ANNOTATION_JSON_WITH_NAME = re.compile(
-    r"^\s*@Json\(\s*name\s*=\s*['\"]([^'\"]+)['\"]\s*\)\s*$"
+    r"^(\s*)@Json\(\s*name\s*=\s*['\"]([^'\"]+)['\"]\s*\)\s*$"
 )
 RE_VAL_DECL = re.compile(r"^(\s*)val\s+([A-Za-z_][A-Za-z0-9_]*)\s*:")
 
@@ -22,7 +22,7 @@ def camel_to_snake(name: str) -> str:
     return s2.lower()
 
 
-def _process_lines(lines: List[str]) -> Tuple[List[str], dict, List[str]]:
+def _process_lines(lines: List[str], fix_names: bool) -> Tuple[List[str], dict, List[str]]:
     changed = False
     stats = {
         "annotations_json_removed": 0,
@@ -35,6 +35,7 @@ def _process_lines(lines: List[str]) -> Tuple[List[str], dict, List[str]]:
     # First pass: transform annotations with validation for @Json(name = ...)
     transformed: List[str] = []
     inserted_serializable = False
+    inserted_serialname = False
     i = 0
     n = len(lines)
     while i < n:
@@ -52,7 +53,8 @@ def _process_lines(lines: List[str]) -> Tuple[List[str], dict, List[str]]:
 
         m_json_with_name = RE_ANNOTATION_JSON_WITH_NAME.match(line)
         if m_json_with_name:
-            json_name = m_json_with_name.group(1)
+            indent = m_json_with_name.group(1)
+            json_name = m_json_with_name.group(2)
             # Validate against the next line (expected: val fieldName: ...)
             if i + 1 >= n:
                 errors.append(
@@ -73,10 +75,18 @@ def _process_lines(lines: List[str]) -> Tuple[List[str], dict, List[str]]:
             field_name = m_val.group(2)
             expected_snake = camel_to_snake(field_name)
             if expected_snake != json_name:
-                errors.append(
-                    f"Field '{field_name}' serializes to '{expected_snake}', but @Json name is '{json_name}'"
-                )
-            # Drop the @Json line
+                if fix_names:
+                    # Replace with @SerialName("...") preserving indentation
+                    transformed.append(f"{indent}@SerialName(\"{json_name}\")\n")
+                    inserted_serialname = True
+                    changed = True
+                    i += 1
+                    continue
+                else:
+                    errors.append(
+                        f"Field '{field_name}' serializes to '{expected_snake}', but @Json name is '{json_name}'"
+                    )
+            # If names match (or we recorded an error and will skip writing), drop the @Json line
             stats["annotations_json_removed"] += 1
             changed = True
             i += 1
@@ -95,6 +105,9 @@ def _process_lines(lines: List[str]) -> Tuple[List[str], dict, List[str]]:
     # Second pass: imports handling (remove moshi, add kotlinx.serialization.Serializable if needed)
     has_serializable_import = any(
         l.strip() == "import kotlinx.serialization.Serializable" for l in transformed
+    )
+    has_serialname_import = any(
+        l.strip() == "import kotlinx.serialization.SerialName" for l in transformed
     )
 
     result_lines: List[str] = []
@@ -120,38 +133,48 @@ def _process_lines(lines: List[str]) -> Tuple[List[str], dict, List[str]]:
     needs_serializable_import = inserted_serializable or any(
         l.strip().startswith("@Serializable") for l in result_lines
     )
+    needs_serialname_import = inserted_serialname or any(
+        l.strip().startswith("@SerialName(") for l in result_lines
+    )
 
-    if needs_serializable_import and not has_serializable_import:
-        # Find insertion point: after last import if any, else after package if any, else at top
-        last_import_idx = None
-        for idx, line in enumerate(result_lines):
-            if line.strip().startswith("import "):
-                last_import_idx = idx
+    # Find insertion anchor for imports
+    last_import_idx = None
+    for idx, line in enumerate(result_lines):
+        if line.strip().startswith("import "):
+            last_import_idx = idx
 
-        insert_line = "import kotlinx.serialization.Serializable\n"
-
+    def insert_import(import_line: str):
+        nonlocal last_import_idx
         if last_import_idx is not None:
-            result_lines.insert(last_import_idx + 1, insert_line)
+            result_lines.insert(last_import_idx + 1, import_line)
+            last_import_idx += 1
         elif package_index is not None:
-            # Insert after package line and a possible blank line
             insert_at = package_index + 1
-            # If next line exists and is blank, insert after it to keep grouping tidy
             if insert_at < len(result_lines) and result_lines[insert_at].strip() == "":
                 insert_at += 1
-            result_lines.insert(insert_at, insert_line)
+            result_lines.insert(insert_at, import_line)
+            last_import_idx = insert_at
         else:
-            result_lines.insert(0, insert_line)
+            result_lines.insert(0, import_line)
+            last_import_idx = 0
 
+    if needs_serializable_import and not has_serializable_import:
+        insert_import("import kotlinx.serialization.Serializable\n")
         stats["import_serializable_added"] = True
+        changed = True
+
+    if needs_serialname_import and not has_serialname_import:
+        insert_import("import kotlinx.serialization.SerialName\n")
+        stats["import_serialname_added"] = True
         changed = True
 
     return (result_lines, {"changed": changed, **stats}, errors)
 
 
-def process_file(path: Path, write: bool) -> Tuple[dict, List[str]]:
+def process_file(path: Path, write: bool, fix_names: bool) -> Tuple[dict, List[str]]:
     text = path.read_text(encoding="utf-8")
     orig_lines = text.splitlines(keepends=True)
-    new_lines, meta, errors = _process_lines(orig_lines)
+    new_lines, meta, errors = _process_lines(orig_lines, fix_names)
 
     if (not errors) and meta["changed"] and write:
         path.write_text("".join(new_lines), encoding="utf-8")
@@ -189,6 +212,13 @@ def main():
         action="store_true",
         help="Show what would change without writing files",
     )
+    parser.add_argument(
+        "--fix-names",
+        action="store_true",
+        help=(
+            "Replace mismatched @Json(name=...) with @SerialName(...) and add its import instead of erroring"
+        ),
+    )
     # No verbose output; tool remains silent on success
 
     args = parser.parse_args()
@@ -201,7 +231,7 @@ def main():
 
     any_errors = False
     for f in files:
-        meta, errors = process_file(f, write=not args.dry_run)
+        meta, errors = process_file(f, write=not args.dry_run, fix_names=args.fix_names)
         if errors:
             any_errors = True
             print(str(f))
