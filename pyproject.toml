@@ -9,6 +9,3 @@ dependencies = ["jinja2>=3.1.0"]
 [project.scripts]
 kmpconvert = "toolbox.kmpconvert:main"
 claude-template = "toolbox.claude_template:main"
-
-[tool.setuptools.packages.find]
-exclude = ["[prompts]*"]

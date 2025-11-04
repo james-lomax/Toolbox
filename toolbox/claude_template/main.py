@@ -132,6 +132,65 @@ def compile_template(template_path: Path) -> str:
     return template.render()
 
 
+def find_template_file(template_spec: str) -> Path:
+    """
+    Find a template file, checking current directory first, then searching subdirectories.
+
+    Args:
+        template_spec: The template filename or partial path to search for
+
+    Returns:
+        Path to the template file
+
+    Raises:
+        FileNotFoundError: If template file is not found
+        ValueError: If multiple templates match the specification
+    """
+    search_root = Path.cwd()
+    template_spec_path = Path(template_spec)
+
+    # First check if the exact path exists (relative to cwd)
+    candidate = search_root / template_spec
+    if candidate.exists() and candidate.is_file():
+        return candidate.resolve()
+
+    # Search for files matching the template name
+    filename = template_spec_path.name
+    matches = list(search_root.rglob(filename))
+
+    if not matches:
+        raise FileNotFoundError(f"Template file '{template_spec}' not found in {search_root} or its subdirectories")
+
+    # If template_spec includes path components, filter by partial path matching
+    if len(template_spec_path.parts) > 1:
+        # Filter matches that end with the specified path
+        filtered_matches = []
+        for match in matches:
+            # Check if the match's relative path ends with the template_spec path
+            try:
+                rel_path = match.relative_to(search_root)
+                # Check if the end of rel_path matches template_spec_path
+                if len(rel_path.parts) >= len(template_spec_path.parts):
+                    if rel_path.parts[-len(template_spec_path.parts):] == template_spec_path.parts:
+                        filtered_matches.append(match)
+            except ValueError:
+                continue
+
+        matches = filtered_matches
+
+        if not matches:
+            raise FileNotFoundError(f"Template file matching '{template_spec}' not found")
+
+    if len(matches) > 1:
+        paths_str = "\n  ".join(str(p.relative_to(search_root)) for p in matches)
+        raise ValueError(
+            f"Ambiguous template reference: multiple files match '{template_spec}':\n  {paths_str}\n"
+            f"Please specify more of the path to disambiguate (e.g., 'subdir/{filename}')"
+        )
+
+    return matches[0].resolve()
+
+
 def main():
     """Main entry point for the claude-template tool."""
     parser = argparse.ArgumentParser(
@@ -139,7 +198,13 @@ def main():
     )
     parser.add_argument(
         "template_file",
-        help="Path to the template file to compile",
+        help="Path to the template file to compile (filename or partial path)",
+    )
+    parser.add_argument(
+        "additional_instructions",
+        nargs="?",
+        default=None,
+        help="Optional additional instructions to append to the compiled template",
     )
     parser.add_argument(
         "--dry",
@@ -149,11 +214,19 @@ def main():
 
     args = parser.parse_args()
 
-    template_path = Path(args.template_file).expanduser().resolve()
+    try:
+        template_path = find_template_file(args.template_file)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     try:
         # Compile the template
         compiled = compile_template(template_path)
+
+        # Append additional instructions if provided
+        if args.additional_instructions:
+            compiled = f"{compiled}\n\n{args.additional_instructions}"
 
         if args.dry:
             # Just print the compiled template

@@ -48,4 +48,7 @@ The program also has a `--dry` argument which simply causes the tool to print th
 
 {% endraw %}
 
-See e.g. {{reference("claude_template/main.py")}}
+- If the template file specified in the first argument is not found in the current directory, search all directories below the current one for a matching file. Much like with reference functions in the template, this should resolve to one file, and error if it is ambiguous. If there is ambiguity we can specify the parent path (e.g. `claude-template file.md` fails if it's ambiguous but we can do `claude-template example/file.md` to resolve this)
+- Also allow an optional second argument for additional instructions which are added to the end of the prompt.
+
+This is implemented at {{reference("claude_template/main.py")}} - please update the implementation if necessary.

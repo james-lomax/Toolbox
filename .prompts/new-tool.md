@@ -9,3 +9,5 @@ Follow the structure of tools in this repository:
 Create a python package with a suitable name in the `toolbox` package. Add `__init__.py` (empty) and `main.py` with a main function to implement the tool.
 
 Add a script entry to pyproject.toml which links to the `{{tool_name}}` tools main function.
+
+Do not write tests unless instructed to.
