@@ -22,7 +22,9 @@ def camel_to_snake(name: str) -> str:
     return s2.lower()
 
 
-def _process_lines(lines: List[str], fix_names: bool) -> Tuple[List[str], dict, List[str]]:
+def _process_lines(
+    lines: List[str], fix_names: bool, fix_all_names: bool
+) -> Tuple[List[str], dict, List[str]]:
     changed = False
     stats = {
         "annotations_json_removed": 0,
@@ -55,6 +57,14 @@ def _process_lines(lines: List[str], fix_names: bool) -> Tuple[List[str], dict, 
         if m_json_with_name:
             indent = m_json_with_name.group(1)
             json_name = m_json_with_name.group(2)
+            if fix_all_names:
+                # Always replace with @SerialName preserving indentation
+                transformed.append(f"{indent}@SerialName(\"{json_name}\")\n")
+                inserted_serialname = True
+                stats["annotations_json_removed"] += 1
+                changed = True
+                i += 1
+                continue
             # Validate against the next line (expected: val fieldName: ...)
             if i + 1 >= n:
                 errors.append(
@@ -171,10 +181,12 @@ def _process_lines(lines: List[str], fix_names: bool) -> Tuple[List[str], dict, 
     return (result_lines, {"changed": changed, **stats}, errors)
 
 
-def process_file(path: Path, write: bool, fix_names: bool) -> Tuple[dict, List[str]]:
+def process_file(
+    path: Path, write: bool, fix_names: bool, fix_all_names: bool
+) -> Tuple[dict, List[str]]:
     text = path.read_text(encoding="utf-8")
     orig_lines = text.splitlines(keepends=True)
-    new_lines, meta, errors = _process_lines(orig_lines, fix_names)
+    new_lines, meta, errors = _process_lines(orig_lines, fix_names, fix_all_names)
 
     if (not errors) and meta["changed"] and write:
         path.write_text("".join(new_lines), encoding="utf-8")
@@ -212,11 +224,19 @@ def main():
         action="store_true",
         help="Show what would change without writing files",
     )
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
         "--fix-names",
         action="store_true",
         help=(
             "Replace mismatched @Json(name=...) with @SerialName(...) and add its import instead of erroring"
+        ),
+    )
+    group.add_argument(
+        "--fix-all-names",
+        action="store_true",
+        help=(
+            "Replace all @Json(name=...) annotations with @SerialName(...) and add its import"
         ),
     )
     # No verbose output; tool remains silent on success
@@ -231,7 +251,12 @@ def main():
 
     any_errors = False
     for f in files:
-        meta, errors = process_file(f, write=not args.dry_run, fix_names=args.fix_names)
+        meta, errors = process_file(
+            f,
+            write=not args.dry_run,
+            fix_names=args.fix_names,
+            fix_all_names=args.fix_all_names,
+        )
         if errors:
             any_errors = True
             print(str(f))
