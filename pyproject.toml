@@ -7,5 +7,6 @@ requires-python = ">=3.12"
 dependencies = ["jinja2>=3.1.0"]
 
 [project.scripts]
-kmpconvert = "toolbox.kmpconvert:main"
-claude-template = "toolbox.claude_template:main"
+kmpconvert = "toolbox.kmpconvert.main:main"
+claude-template = "toolbox.claude_template.main:main"
+cm-adb = "toolbox.cm_adb.main:main"
