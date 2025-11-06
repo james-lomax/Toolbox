@@ -24,6 +24,8 @@ This will instruct Claude to build/update your tool.
 
 `claude-template` is a simple tool which constructs a prompt template from markdown files. See `claude-template.md` to see how this works and how to use it.
 
+Usage: `claude-template template-file.md "[optional additional instructions]" [--dry] [--changed]`
+
 This tool solves a common problem with using AI coders: as context size increases, the quality of results decreases, so we typically spend a lot of time constructing prompts which specify the precise context that is required to complete a task. Templating your prompt allows you to specify how we construct this context in a reusable way.
 
 Define a markdown file with your prompt and run `claude-template my-prompt.md` to create a prompt and start Claude Code with it.
@@ -32,6 +34,12 @@ You can also use `--dry` to simply print the prompt and stop. And you can also s
 
 ```sh
 claude-template my-prompt.md "Update this feature"
+```
+
+Additionally, you can use `--changed` when you update the prompt files - this will generate a git diff of the rendered prompt as it appears in the working copy vs how it appeared in the last commit, making it easier to prompt Claude to make updates based on the changes you've made to the prompt.
+
+```sh
+claude-template my-prompt.md --changed
 ```
 
 The input prompt file is considered as a jinja2 template with some special functions:

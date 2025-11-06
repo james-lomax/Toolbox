@@ -46,9 +46,36 @@ How the program works:
 
 The program also has a `--dry` argument which simply causes the tool to print the compiled template and stop, without executing claude code.
 
-{% endraw %}
-
 - If the template file specified in the first argument is not found in the current directory, search all directories below the current one for a matching file. Much like with reference functions in the template, this should resolve to one file, and error if it is ambiguous. If there is ambiguity we can specify the parent path (e.g. `claude-template file.md` fails if it's ambiguous but we can do `claude-template example/file.md` to resolve this)
 - Also allow an optional second argument for additional instructions which are added to the end of the prompt.
 
 This is implemented at {{reference("claude_template/main.py")}} - please update the implementation if necessary.
+
+**--changed**
+
+Implement a new command switch `--changed`. When supplied, the program will render two copies of the prompt:
+
+- One is how the prompt would appear at the last commit. Use git to retrieve the contents of each file (including included template and include files) and render the prompt as it would've appeared before the working copy changes.
+- Then we render the working copy as normal
+
+The program creates a diff of the changes in the git diff format (use a common library or application for this) and appends it to the prompt so the prompt becomes:
+
+```
+{{full_file (working copy)}}
+
+We've run this prompt before, but I've made some changes, here is the diff from the last time we ran:
+
+{{diff}}
+
+{% if additional_instructions %}
+Additionally:
+
+{{additional_instructions}}
+{% endif %}
+```
+
+(Note the claude-template program does not need to render these prompts using jinja2, this is just illustrative)
+
+If there is no change in the prompt, you can omit the diff.
+
+{% endraw %}

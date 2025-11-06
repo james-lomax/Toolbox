@@ -1,4 +1,5 @@
 import argparse
+import difflib
 import os
 import subprocess
 import sys
@@ -103,33 +104,179 @@ def template_function(filename: str, **kwargs: Any) -> str:
     return tmpl.render(**kwargs)
 
 
-def compile_template(template_path: Path) -> str:
+def get_git_file_content(file_path: Path, commit: str = "HEAD") -> Optional[str]:
+    """
+    Get the content of a file from a specific git commit.
+
+    Args:
+        file_path: Path to the file
+        commit: Git commit reference (default: "HEAD")
+
+    Returns:
+        The file content as a string, or None if the file doesn't exist in that commit
+    """
+    try:
+        # Get git root
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        git_root = Path(result.stdout.strip())
+
+        # Get relative path from git root
+        rel_path = file_path.resolve().relative_to(git_root)
+
+        # Get file content from git
+        result = subprocess.run(
+            ["git", "show", f"{commit}:{rel_path}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout
+    except (subprocess.CalledProcessError, ValueError):
+        return None
+
+
+def reference_git(filename: str, commit: str = "HEAD") -> str:
+    """
+    Jinja2 function to resolve a file reference from a specific git commit.
+
+    Args:
+        filename: The filename to reference
+        commit: Git commit reference
+
+    Returns:
+        A string like "@path/to/file.ext"
+    """
+    file_path = find_file(filename)
+    return f"@{file_path}"
+
+
+def include_git(filename: str, commit: str = "HEAD") -> str:
+    """
+    Jinja2 function to include file contents from a specific git commit.
+
+    Args:
+        filename: The filename to include
+        commit: Git commit reference
+
+    Returns:
+        The contents of the file from the specified commit
+    """
+    file_path = find_file(filename)
+    content = get_git_file_content(file_path, commit)
+    if content is None:
+        # If file doesn't exist in git, return empty string
+        return ""
+    return content
+
+
+def template_function_git(filename: str, commit: str = "HEAD", **kwargs: Any) -> str:
+    """
+    Jinja2 function to render another template from a specific git commit.
+
+    Args:
+        filename: The template filename to render
+        commit: Git commit reference
+        **kwargs: Arguments to pass to the template
+
+    Returns:
+        The rendered template from the specified commit
+    """
+    file_path = find_file(filename)
+    template_content = get_git_file_content(file_path, commit)
+    if template_content is None:
+        # If file doesn't exist in git, return empty string
+        return ""
+
+    # Create a new template with custom functions that use the same commit
+    env = Environment(autoescape=False)
+    env.globals["reference"] = lambda fn: reference_git(fn, commit)
+    env.globals["include"] = lambda fn: include_git(fn, commit)
+    env.globals["template"] = lambda fn, **kw: template_function_git(fn, commit, **kw)
+
+    tmpl = env.from_string(template_content)
+    return tmpl.render(**kwargs)
+
+
+def compile_template(template_path: Path, use_git_commit: Optional[str] = None) -> str:
     """
     Compile a Jinja2 template file.
 
     Args:
         template_path: Path to the template file
+        use_git_commit: If provided, compile the template using file contents from this git commit
 
     Returns:
         The rendered template as a string
     """
-    if not template_path.exists():
-        raise FileNotFoundError(f"Template file not found: {template_path}")
+    if use_git_commit:
+        # Get template content from git
+        template_content = get_git_file_content(template_path, use_git_commit)
+        if template_content is None:
+            raise FileNotFoundError(f"Template file not found in commit {use_git_commit}: {template_path}")
 
-    # Set up Jinja2 environment
-    env = Environment(
-        loader=FileSystemLoader(template_path.parent),
-        autoescape=False,  # We're templating markdown, not HTML
+        # Set up Jinja2 environment with git-aware functions
+        env = Environment(autoescape=False)
+        env.globals["reference"] = lambda fn: reference_git(fn, use_git_commit)
+        env.globals["include"] = lambda fn: include_git(fn, use_git_commit)
+        env.globals["template"] = lambda fn, **kw: template_function_git(fn, use_git_commit, **kw)
+
+        tmpl = env.from_string(template_content)
+        return tmpl.render()
+    else:
+        # Use current working copy
+        if not template_path.exists():
+            raise FileNotFoundError(f"Template file not found: {template_path}")
+
+        # Set up Jinja2 environment
+        env = Environment(
+            loader=FileSystemLoader(template_path.parent),
+            autoescape=False,  # We're templating markdown, not HTML
+        )
+
+        # Add custom functions to the template environment
+        env.globals["reference"] = reference
+        env.globals["include"] = include
+        env.globals["template"] = template_function
+
+        # Load and render the template
+        template = env.get_template(template_path.name)
+        return template.render()
+
+
+def create_unified_diff(old_text: str, new_text: str, filename: str = "prompt") -> str:
+    """
+    Create a unified diff between two text strings.
+
+    Args:
+        old_text: The old version of the text
+        new_text: The new version of the text
+        filename: Name to use in the diff header
+
+    Returns:
+        A unified diff string, or empty string if there are no differences
+    """
+    old_lines = old_text.splitlines(keepends=True)
+    new_lines = new_text.splitlines(keepends=True)
+
+    diff_lines = list(
+        difflib.unified_diff(
+            old_lines,
+            new_lines,
+            fromfile=f"{filename} (last commit)",
+            tofile=f"{filename} (working copy)",
+            lineterm="",
+        )
     )
 
-    # Add custom functions to the template environment
-    env.globals["reference"] = reference
-    env.globals["include"] = include
-    env.globals["template"] = template_function
+    if not diff_lines:
+        return ""
 
-    # Load and render the template
-    template = env.get_template(template_path.name)
-    return template.render()
+    return "".join(diff_lines)
 
 
 def find_template_file(template_spec: str) -> Path:
@@ -211,6 +358,11 @@ def main():
         action="store_true",
         help="Print the compiled template without executing Claude Code",
     )
+    parser.add_argument(
+        "--changed",
+        action="store_true",
+        help="Include a diff of changes since the last commit",
+    )
 
     args = parser.parse_args()
 
@@ -221,12 +373,34 @@ def main():
         sys.exit(1)
 
     try:
-        # Compile the template
-        compiled = compile_template(template_path)
+        # Compile the template from working copy
+        compiled_working = compile_template(template_path)
+
+        if args.changed:
+            # Also compile from last commit
+            try:
+                compiled_last_commit = compile_template(template_path, use_git_commit="HEAD")
+
+                # Create diff if there are changes
+                diff = create_unified_diff(compiled_last_commit, compiled_working, "prompt")
+
+                if diff:
+                    # Build the final prompt with diff
+                    compiled = f"{compiled_working}\n\nWe've run this prompt before, but I've made some changes, here is the diff from the last time we ran:\n\n```diff\n{diff}\n```"
+                else:
+                    # No changes, just use the working copy
+                    compiled = compiled_working
+            except (FileNotFoundError, subprocess.CalledProcessError):
+                # If we can't get the last commit version, just use working copy
+                print("Warning: Could not retrieve last commit version, using working copy only", file=sys.stderr)
+                compiled = compiled_working
+        else:
+            compiled = compiled_working
 
         # Append additional instructions if provided
         if args.additional_instructions:
-            compiled = f"{compiled}\n\n{args.additional_instructions}"
+            # Additional instructions always go at the end
+            compiled = f"{compiled}\n\nAdditionally:\n\n{args.additional_instructions}"
 
         if args.dry:
             # Just print the compiled template
