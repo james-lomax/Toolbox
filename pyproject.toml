@@ -10,3 +10,4 @@ dependencies = ["jinja2>=3.1.0"]
 kmpconvert = "toolbox.kmpconvert.main:main"
 claude-template = "toolbox.claude_template.main:main"
 cm-adb = "toolbox.cm_adb.main:main"
+aslog = "toolbox.aslog.main:main"
