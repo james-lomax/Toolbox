@@ -82,6 +82,22 @@ cm-adb clear-booking
 
 Removes any saved booking data from the app on a device connected over adb.
 
+## geojson-ads-circles
+
+Given a file of POIs like:
+
+```csv
+Name,Address,Postcode,lat,lng
+Boots,"11-19 Lower Parliament Street, Nottingham",NG1 3QS,52.9555186000,-1.1465924000
+Boots,"1 Devonshire Walk, Derby",DE1 2AH,52.9200880000,-1.4733948000
+```
+
+You can generate a GeoJSON file of campaign locations with a given radius (in this case 5km) like so:
+
+```sh
+geojson-ads-circles campaign.csv campaign 5000 campaign.geojson
+```
+
 ## kmpconversion
 
 Convert Kotlin Moshi models to kotlinx.serialization.
@@ -93,16 +109,6 @@ Convert Kotlin Moshi models to kotlinx.serialization.
 - Adds `import kotlinx.serialization.Serializable` when needed
 
 ### Install (uv)
-
-From the project root:
-
-```bash
-uv tool install --editable .
-```
-
-This installs the `kmpconvert` command globally (via uv's tool shim).
-
-### Usage
 
 ```bash
 # Dry run (no files written)
