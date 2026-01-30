@@ -24,7 +24,7 @@ This will instruct Claude to build/update your tool.
 
 `claude-template` is a simple tool which constructs a prompt template from markdown files. See `claude-template.md` to see how this works and how to use it.
 
-Usage: `claude-template template-file.md "[optional additional instructions]" [--dry] [--changed]`
+Usage: `claude-template template-file.md "[optional additional instructions]" [--dry] [--changed] [-D key=value]`
 
 This tool solves a common problem with using AI coders: as context size increases, the quality of results decreases, so we typically spend a lot of time constructing prompts which specify the precise context that is required to complete a task. Templating your prompt allows you to specify how we construct this context in a reusable way.
 
@@ -42,6 +42,16 @@ Additionally, you can use `--changed` when you update the prompt files - this wi
 claude-template my-prompt.md --changed
 ```
 
+You can specify environment variables to apply to the top level prompt with e.g.:
+
+```sh
+claude-template my-prompt.md -D key=value
+```
+
+This will set the `{{key}}` template argument.
+
+### Prompt template files
+
 The input prompt file is considered as a jinja2 template with some special functions:
 
 **reference(filename: str)**
@@ -54,7 +64,7 @@ This inserts an absolute path file reference from the file-name.
 
 The template tool attempts to unambiguously resolve this reference using the path you've provided. This path need only contain the minimum information to unambiguously resolve the file, so generally you can supply just the filename. If the reference cannot be unambiguously resolved, and error is raised.
 
-**template(filename: str, **kwargs)**
+**template(filename: str, \*\*kwargs)**
 
 ```
 {{template("my-other-prompt.md", argument="value"}}
