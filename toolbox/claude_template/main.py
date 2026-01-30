@@ -202,7 +202,7 @@ def template_function_git(filename: str, commit: str = "HEAD", **kwargs: Any) ->
     return tmpl.render(**kwargs)
 
 
-def compile_template(template_path: Path, use_git_commit: Optional[str] = None) -> str:
+def compile_template(template_path: Path, use_git_commit: Optional[str] = None, template_kwargs: Optional[dict[str, str]] = None) -> str:
     """
     Compile a Jinja2 template file.
 
@@ -226,7 +226,7 @@ def compile_template(template_path: Path, use_git_commit: Optional[str] = None) 
         env.globals["template"] = lambda fn, **kw: template_function_git(fn, use_git_commit, **kw)
 
         tmpl = env.from_string(template_content)
-        return tmpl.render()
+        return tmpl.render(**(template_kwargs or {}))
     else:
         # Use current working copy
         if not template_path.exists():
@@ -245,7 +245,7 @@ def compile_template(template_path: Path, use_git_commit: Optional[str] = None) 
 
         # Load and render the template
         template = env.get_template(template_path.name)
-        return template.render()
+        return template.render(**(template_kwargs or {}))
 
 
 def create_unified_diff(old_text: str, new_text: str, filename: str = "prompt") -> str:
@@ -363,8 +363,25 @@ def main():
         action="store_true",
         help="Include a diff of changes since the last commit",
     )
+    parser.add_argument(
+        "-D",
+        action="append",
+        dest="template_args",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Pass arguments to the template (e.g. -D name=value)",
+    )
 
     args = parser.parse_args()
+
+    # Parse template arguments
+    template_kwargs: dict[str, str] = {}
+    for arg in args.template_args:
+        if "=" not in arg:
+            print(f"Error: Template argument must be in KEY=VALUE format, got: {arg}", file=sys.stderr)
+            sys.exit(1)
+        key, value = arg.split("=", 1)
+        template_kwargs[key] = value
 
     try:
         template_path = find_template_file(args.template_file)
@@ -374,12 +391,12 @@ def main():
 
     try:
         # Compile the template from working copy
-        compiled_working = compile_template(template_path)
+        compiled_working = compile_template(template_path, template_kwargs=template_kwargs)
 
         if args.changed:
             # Also compile from last commit
             try:
-                compiled_last_commit = compile_template(template_path, use_git_commit="HEAD")
+                compiled_last_commit = compile_template(template_path, use_git_commit="HEAD", template_kwargs=template_kwargs)
 
                 # Create diff if there are changes
                 diff = create_unified_diff(compiled_last_commit, compiled_working, "prompt")
