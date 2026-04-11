@@ -2,27 +2,35 @@ import argparse
 import csv
 import json
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Dict, Any
+
+
+def get_field(row: Dict[str, str], *candidates: str) -> str | None:
+    """Look up a field by trying candidate names case-insensitively."""
+    lower_map = {k.lower(): k for k in row}
+    for c in candidates:
+        actual_key = lower_map.get(c.lower())
+        if actual_key is not None:
+            return row[actual_key]
+    return None
+
+
+def require_field(row: Dict[str, str], *candidates: str) -> str:
+    value = get_field(row, *candidates)
+    if value is None:
+        raise KeyError(f"Missing required field (tried: {', '.join(candidates)})")
+    return value
 
 
 def create_circle_feature(row: Dict[str, str], radius: float) -> Dict[str, Any]:
-    """
-    Create a GeoJSON feature for a circle (represented as a Point with radius property).
+    lat = float(require_field(row, "lat", "latitude"))
+    lng = float(require_field(row, "lng", "lon", "longitude"))
+    name = require_field(row, "name")
+    address = require_field(row, "address")
 
-    Args:
-        row: CSV row dictionary with Name, Address, Postcode (optional), lat, lng
-        radius: Circle radius in meters
-
-    Returns:
-        GeoJSON feature dictionary
-    """
-    lat = float(row["lat"])
-    lng = float(row["lng"])
-
-    # Build address with postcode if available
-    address = row["Address"]
-    if "Postcode" in row and row["Postcode"]:
-        address = f"{address}, {row['Postcode']}"
+    postcode = get_field(row, "postcode")
+    if postcode:
+        address = f"{address}, {postcode}"
 
     return {
         "type": "Feature",
@@ -33,7 +41,7 @@ def create_circle_feature(row: Dict[str, str], radius: float) -> Dict[str, Any]:
         "properties": {
             "subType": "Circle",
             "radius": radius,
-            "Name": row["Name"],
+            "Name": name,
             "Address": address,
             "lat": lat,
             "lng": lng
@@ -47,16 +55,7 @@ def process_csv_to_geojson(
     radius: float,
     output_file: Path
 ) -> None:
-    """
-    Convert CSV file with POI data to GeoJSON with circle features.
-
-    Args:
-        input_file: Path to input CSV file
-        keyword: Name/keyword for the feature collection
-        radius: Circle radius in meters
-        output_file: Path to output GeoJSON file
-    """
-    features: List[Dict[str, Any]] = []
+    features: list[Dict[str, Any]] = []
 
     with open(input_file, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)

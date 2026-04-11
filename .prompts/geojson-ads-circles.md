@@ -52,3 +52,5 @@ And it will produce output.geojson with the circles encoded, for example:
 }
 
 Note that the postcode field may not be present in the input file. If it is, the postcode of each POI is added to the address.
+
+Accept field names of any case. Accept "lat", "latitude", "Lat", and "Latitude".
