@@ -2,6 +2,20 @@
 
 Miscellaneous tools I use day to day.
 
+## Tools
+
+- **[claude-template](#claude-template)** — Build and render prompt templates for Claude Code with file references, includes, and Jinja2 templating
+- **[cm-adb](#cm-adb)** — Clear saved booking data from an Android device over ADB
+- **[geojson-ads-circles](#geojson-ads-circles)** — Generate GeoJSON circle polygons from a CSV of POIs for ad campaign targeting
+- **[aslog](#aslog)** — Simplify Android Studio network logs into readable JSON, decoding base64/gzip payloads
+- **[emoji-detector](#emoji-detector)** — Identify and describe emoji images using Gemini, producing an HTML report
+- **[gt-track-remote](#gt-track-remote)** — Pull a remote branch and move it onto your current Graphite stack
+- **[gt-close-resolved](#gt-close-resolved)** — Auto-close GitHub issues referenced by recent commits on master
+- **[claude-schedule](#claude-schedule)** — Schedule Claude Code to run a prompt in a git worktree at a specified time
+- **[git-mux](#git-mux)** — Merge multiple branches into a temporary detached HEAD for combined testing
+- **[claude-crosscheck](#claude-crosscheck)** — Cross-check related changes across two repos for parity issues
+- **[kmpconversion](#kmpconversion)** — Convert Kotlin Moshi models to kotlinx.serialization
+
 ## Installation
 
 For general use you can do `uv tool install .`
