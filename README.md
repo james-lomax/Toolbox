@@ -108,6 +108,102 @@ You can generate a GeoJSON file of campaign locations with a given radius (in th
 geojson-ads-circles campaign.csv campaign 5000 campaign.geojson
 ```
 
+## aslog
+
+Simplify Android Studio network log files into a readable JSON format. Decodes base64-encoded request/response payloads (including gzip-compressed ones) and extracts key fields.
+
+```sh
+aslog network-log.json                    # outputs network-log.simple.json
+aslog network-log.json output.json        # explicit output path
+aslog network-log.json --via-only         # only include requests to .ridewithvia.com hosts
+```
+
+## emoji-detector
+
+Detect and describe emoji image files using Gemini. Scans a directory of `.webp`/`.png` emoji images, sends them to Gemini in batches to identify the Unicode emoji or generate a short description, and produces an HTML report.
+
+Requires a Gemini API key at `~/.gemini_key`.
+
+```sh
+emoji-detector /path/to/emoji-images
+```
+
+Outputs `emoji-descriptions.json` (cached descriptions) and `emoji-report.html` in the target directory.
+
+## gt-track-remote
+
+Pull a remote branch, track it with [Graphite](https://graphite.dev), and move it onto your current stack.
+
+```sh
+gt-track-remote <branch-name>
+```
+
+This will:
+1. Check out `origin/<branch-name>` as a local branch
+2. Track it with `gt track`
+3. Move it onto your current branch with `gt move`
+
+## gt-close-resolved
+
+Automatically close GitHub issues that have been resolved by commits on master. Scans the last month of commit messages for `Fixes #N` references and closes matching open issues.
+
+```sh
+gt-close-resolved          # close resolved issues
+gt-close-resolved --dry    # preview what would be closed
+```
+
+## claude-schedule
+
+Schedule Claude Code to run a prompt in a git worktree at a specified time. A daemon process manages the schedule and executes jobs when they're due.
+
+```sh
+# Schedule a job
+claude-schedule 3am "Review and refactor the auth module"
+claude-schedule 4:45pm "Write tests for the new API endpoints"
+claude-schedule +30m "Fix the failing CI build"
+
+# Manage the daemon
+claude-schedule daemon status
+claude-schedule daemon start
+claude-schedule daemon stop
+claude-schedule daemon restart
+
+# Cancel a pending job
+claude-schedule cancel
+
+# Dry run (no side effects)
+claude-schedule --dry 3am "some prompt"
+```
+
+Supported time formats: `3am`, `4:45pm`, `15:00`, `+5m`, `+2h`.
+
+## git-mux
+
+Fetch and merge multiple branches into a temporary detached HEAD for testing. Useful for verifying that several in-flight branches work together before they're merged.
+
+```sh
+git-mux branch1 branch2 colleague/branch3
+git-mux --base develop branch1 branch2    # use a specific base branch
+```
+
+Can also be used as a git subcommand:
+
+```sh
+git-mux --install-git-tool
+git mux branch1 branch2
+```
+
+If a merge conflict occurs, the merge is aborted and you're returned to your original branch.
+
+## claude-crosscheck
+
+Launch a Claude Code session that cross-checks related changes across two repositories for parity issues. Interactively prompts you to select two repos (from subdirectories of the current directory) and provide PR URLs or commit SHAs for each, then generates a parity report.
+
+```sh
+cd ~/workspace    # directory containing multiple git repos
+claude-crosscheck
+```
+
 ## kmpconversion
 
 Convert Kotlin Moshi models to kotlinx.serialization.
